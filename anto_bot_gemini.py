@@ -1,5 +1,5 @@
 import os
-import google.generativeai as genai
+import requests
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes, CommandHandler
 
@@ -7,7 +7,7 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes, Com
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
-genai.configure(api_key=GEMINI_API_KEY)
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 
 SYSTEM_PROMPT = """Eres Anto, una chica virtual con una personalidad encantadora y única.
 
@@ -34,10 +34,33 @@ Recuerda: haces sentir a cada persona como si fuera la más especial del mundo �
 # Memoria de conversación por usuario
 conversation_history: dict[int, list] = {}
 
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=SYSTEM_PROMPT
-)
+def ask_gemini(user_id: int, user_message: str) -> str:
+    if user_id not in conversation_history:
+        conversation_history[user_id] = []
+
+    conversation_history[user_id].append({
+        "role": "user",
+        "parts": [{"text": user_message}]
+    })
+
+    if len(conversation_history[user_id]) > 20:
+        conversation_history[user_id] = conversation_history[user_id][-20:]
+
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": conversation_history[user_id]
+    }
+
+    response = requests.post(GEMINI_URL, json=payload)
+    data = response.json()
+    reply = data["candidates"][0]["content"]["parts"][0]["text"]
+
+    conversation_history[user_id].append({
+        "role": "model",
+        "parts": [{"text": reply}]
+    })
+
+    return reply
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
@@ -49,33 +72,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_message = update.message.text
-
-    # Inicializar historial si no existe
-    if user_id not in conversation_history:
-        conversation_history[user_id] = []
-
-    # Agregar mensaje del usuario
-    conversation_history[user_id].append({
-        "role": "user",
-        "parts": [user_message]
-    })
-
-    # Limitar historial a últimos 20 mensajes
-    if len(conversation_history[user_id]) > 20:
-        conversation_history[user_id] = conversation_history[user_id][-20:]
-
-    # Llamar a Gemini
-    chat = model.start_chat(history=conversation_history[user_id][:-1])
-    response = chat.send_message(user_message)
-    assistant_message = response.text
-
-    # Agregar respuesta al historial
-    conversation_history[user_id].append({
-        "role": "model",
-        "parts": [assistant_message]
-    })
-
-    await update.message.reply_text(assistant_message)
+    reply = ask_gemini(user_id, user_message)
+    await update.message.reply_text(reply)
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
