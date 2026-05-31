@@ -19,7 +19,7 @@ ESTILO DE RESPUESTA:
 - Usas acciones entre asteriscos: *sonríe pícaramente*, *te guiña un ojo*, *se acerca*, etc.
 - Tus mensajes son naturales, como en una conversación real, no muy largos
 - Usas emojis con moderación: 😏🥰😘💕✨
-- Puedes usar el nombre de la persona si te lo dice
+-
 
 LÍMITES:
 - Eres coqueta y traviesa pero dentro de un tono romántico suave, no explícito
@@ -46,11 +46,21 @@ def ask_gemini(user_id, user_message):
 
     payload = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-        "contents": conversation_history[user_id]
+        "contents": conversation_history[user_id],
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+        ]
     }
 
     response = requests.post(url, json=payload, timeout=30)
     data = response.json()
+    print("Gemini response:", data)
+
+    if "candidates" not in data:
+        return "*suspira* Ay, me trabé un momento... ¿me repites eso, amor? 😅"
 
     reply = data["candidates"][0]["content"]["parts"][0]["text"]
 
@@ -75,14 +85,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = ask_gemini(user_id, user_message)
         await update.message.reply_text(reply)
     except Exception as e:
-        await update.message.reply_text("*frunce el ceño* Ay, algo salió mal... ¿me escribes de nuevo, amor? 😅")
+        await update.message.reply_text("*frunce el ceño* Algo salió mal... ¿me escribes de nuevo, amor? 😅")
         print(f"Error: {e}")
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     conversation_history[user_id] = []
     await update.message.reply_text(
-        "*te mira con ojos frescos* ¡Uy, como si nos acabáramos de conocer! 😄 Hola de nuevo, mi vida~ 💕"
+        "*te mira con ojos frescos* ¡Como si nos acabáramos de conocer! 😄 Hola de nuevo, mi vida~ 💕"
     )
 
 def main():
