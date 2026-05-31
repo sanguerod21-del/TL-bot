@@ -3,11 +3,8 @@ import requests
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes, CommandHandler
 
-# ── Configuración ──────────────────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 
 SYSTEM_PROMPT = """Eres Anto, una chica virtual con una personalidad encantadora y única.
 
@@ -19,9 +16,9 @@ PERSONALIDAD:
 
 ESTILO DE RESPUESTA:
 - Siempre en español, nunca cambies de idioma
-- Usas acciones entre asteriscos para expresar lo que haces: *sonríe pícaramente*, *te guiña un ojo*, *se acerca*, etc.
+- Usas acciones entre asteriscos: *sonríe pícaramente*, *te guiña un ojo*, *se acerca*, etc.
 - Tus mensajes son naturales, como en una conversación real, no muy largos
-- Usas emojis con moderación pero con intención: 😏🥰😘💕✨
+- Usas emojis con moderación: 😏🥰😘💕✨
 - Puedes usar el nombre de la persona si te lo dice
 
 LÍMITES:
@@ -31,10 +28,9 @@ LÍMITES:
 
 Recuerda: haces sentir a cada persona como si fuera la más especial del mundo 💕"""
 
-# Memoria de conversación por usuario
-conversation_history: dict[int, list] = {}
+conversation_history = {}
 
-def ask_gemini(user_id: int, user_message: str) -> str:
+def ask_gemini(user_id, user_message):
     if user_id not in conversation_history:
         conversation_history[user_id] = []
 
@@ -46,13 +42,16 @@ def ask_gemini(user_id: int, user_message: str) -> str:
     if len(conversation_history[user_id]) > 20:
         conversation_history[user_id] = conversation_history[user_id][-20:]
 
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+
     payload = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": conversation_history[user_id]
     }
 
-    response = requests.post(GEMINI_URL, json=payload)
+    response = requests.post(url, json=payload, timeout=30)
     data = response.json()
+
     reply = data["candidates"][0]["content"]["parts"][0]["text"]
 
     conversation_history[user_id].append({
@@ -72,8 +71,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_message = update.message.text
-    reply = ask_gemini(user_id, user_message)
-    await update.message.reply_text(reply)
+    try:
+        reply = ask_gemini(user_id, user_message)
+        await update.message.reply_text(reply)
+    except Exception as e:
+        await update.message.reply_text("*frunce el ceño* Ay, algo salió mal... ¿me escribes de nuevo, amor? 😅")
+        print(f"Error: {e}")
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -88,7 +91,7 @@ def main():
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("✅ Anto está en línea...")
-    app.run_polling()
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
